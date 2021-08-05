@@ -1,0 +1,41 @@
+<head>
+    <link href="assets/style.css" type="text/css" rel="stylesheet">
+</head>
+
+<div class="app">
+    <header class="app-header">
+        <p>Terraform Playground</p>
+    </header>
+
+    <div>
+      <div>
+        <div class="app-form">
+          <form action="{{.ApplyPath}}" method="post">
+            <label>
+            </label>
+            <textarea name="config" cols="50" rows="30" value="" placeholder="Write your terraform here!">
+            </textarea><br>
+            <input type="submit" value="Submit" />
+          </form>
+        </div>
+        <div className="app-output">
+            {{if .RunId}}
+                <p>Run: {{.RunId}}</p>
+            {{end}}
+          <p>Output: </p>
+        </div>
+      </div>
+    </div>
+</div>
+
+<!---
+<ul>
+    {{range .Todos}}
+        {{if .Done}}
+            <li class="done">{{.Title}}</li>
+        {{else}}
+            <li>{{.Title}}</li>
+        {{end}}
+    {{end}}
+</ul>
+--->

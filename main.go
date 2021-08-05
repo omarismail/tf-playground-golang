@@ -4,22 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	tfe "github.com/hashicorp/go-tfe"
+	lru "github.com/hashicorp/golang-lru"
+)
+
+var (
+	// key must be 16, 24 or 32 bytes long (AES-128, AES-192 or AES-256)
+	key   = []byte("super-secret-key")
+	store = sessions.NewCookieStore(key)
 )
 
 const (
-	playgroundOrg = "terraform-playground-hack"
+	playgroundSession = "playground-session"
+	playgroundOrg     = "terraform-playground-hack"
 )
 
 type server struct {
 	tfeClient *tfe.Client
 	ctx       context.Context
+	cache     *lru.ARCCache
 }
 
 func main() {
@@ -36,23 +48,112 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not create tfe client %v", err)
 	}
+	newCache, err := lru.NewARC(1000)
+	if err != nil {
+		log.Fatalf("could not create tfe client %v", err)
+	}
 	s := &server{
 		tfeClient: client,
 		ctx:       context.Background(),
+		cache:     newCache,
 	}
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", s.HomeHandler).Methods("GET")
+	r.HandleFunc("/favicon.ico", faviconHandler).Methods("GET")
 	r.HandleFunc("/apply/{uuid}", s.ApplyConfig).Methods("POST")
 	r.HandleFunc("/runs/{id}", s.RunHandler).Methods("GET")
+
+	// Choose the folder to serve
+	staticDir := "/assets/"
+	// Create the route
+	r.
+		PathPrefix(staticDir).
+		Handler(http.StripPrefix(staticDir, http.FileServer(http.Dir("."+staticDir))))
 	http.Handle("/", r)
 
 	http.ListenAndServe(":8080", r)
 }
+func faviconHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "./assets/favicon.ico")
+}
+
+type PageData struct {
+	Uuid        string
+	ApplyPath   string
+	RunId       string
+	StateOutput string
+	Todos       []Todo
+	RunData     runOutput
+}
+
+type Todo struct {
+	Title string
+	Done  bool
+}
+
+type runOutput struct {
+	RunId  string
+	Output string
+}
+
+//data := PageData{
+//	Uuid: uuid.NewString(),
+//	Todos: []Todo{
+//		{Title: "Task 1", Done: false},
+//	},
+//}
 
 func (s *server) HomeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("OK")
-	w.WriteHeader(http.StatusOK)
+	sessionUUID, err := getSessionUuid(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tmpl := template.Must(template.ParseFiles("layout.html"))
+	data := PageData{
+		Uuid: sessionUUID,
+	}
+	if s.cache.Contains(sessionUUID) {
+		log.Println("Contains Key", sessionUUID)
+		val, hasKey := s.cache.Get(sessionUUID)
+		if hasKey {
+			if runVal, ok := val.(*runOutput); ok {
+				data.RunId = runVal.RunId
+				data.StateOutput = runVal.Output
+			}
+		}
+	}
+
+	data.ApplyPath = fmt.Sprintf("/apply/%s", data.Uuid)
+	tmpl.Execute(w, data)
+}
+
+func getSessionUuid(w http.ResponseWriter, r *http.Request) (string, error) {
+	session, err := store.Get(r, playgroundSession)
+	if err != nil {
+		return "", err
+	}
+	var id string
+	val := session.Values["uuid"]
+	id, ok := val.(string)
+	if ok {
+		return id, nil
+	}
+	id = uuid.NewString()
+	session.Values["uuid"] = id
+	err = sessions.Save(r, w)
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+func renderTemplate(w http.ResponseWriter, tmpl string, pd PageData) {
+	t := template.Must(template.ParseFiles(tmpl + ".html"))
+	t.Execute(w, pd)
 }
 
 type tfConfig struct {
@@ -66,8 +167,10 @@ type runResponse struct {
 func (s *server) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	uuid := vars["uuid"]
-	fmt.Println(uuid)
+	configVal := r.FormValue("config")
+
 	log.Println(uuid)
+	log.Println(configVal)
 
 	workspace, err := s.findOrCreateWorkspace(uuid)
 	if err != nil {
@@ -77,16 +180,19 @@ func (s *server) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	config := &tfConfig{}
-	err = json.NewDecoder(r.Body).Decode(config)
-	if err != nil {
-		log.Printf("%v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	fmt.Println("CONFIG")
-	fmt.Printf("%v", config)
+	//config := &tfConfig{}
+	//err = json.NewDecoder(r.Body).Decode(config)
+	//if err != nil {
+	//	log.Printf("%v", err)
+	//	http.Error(w, err.Error(), http.StatusBadRequest)
+	//	return
+	//}
+	//fmt.Println("CONFIG")
+	//fmt.Printf("%v", config)
 
+	config := &tfConfig{
+		Config: configVal,
+	}
 	pwd, err := os.Getwd()
 	if err != nil {
 		log.Printf("%v", err)
@@ -150,10 +256,29 @@ func (s *server) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Println(string(jsonResponse))
+	sessionUUID, err := getSessionUuid(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(jsonResponse)
+	if s.cache.Contains(sessionUUID) {
+		runData := &runOutput{
+			RunId: run.ID,
+		}
+		s.cache.Add(sessionUUID, runData)
+	}
+
+	pageData := PageData{
+		Uuid:  sessionUUID,
+		RunId: run.ID,
+	}
+	pageData.ApplyPath = fmt.Sprintf("/apply/%s", pageData.Uuid)
+	//renderTemplate(w, "layout", pageData)
+	http.Redirect(w, r, "/", http.StatusFound)
+	//w.Header().Set("Content-Type", "application/json")
+	//w.WriteHeader(http.StatusOK)
+	//w.Write(jsonResponse)
 }
 
 type runDetails struct {

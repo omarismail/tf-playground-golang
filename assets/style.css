@@ -1,0 +1,25 @@
+
+.app {
+  text-align: center;
+}
+
+.app-header {
+  background-color: #282c34;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.app-form {
+  text-align: left;
+  position: absolute;
+  left: 5%;
+}
+
+.app-output {
+  text-align: right;
+  position: absolute;
+  right: 30%;
+}
