@@ -204,8 +204,9 @@ func (s *server) RunHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println(string(jsonResponse))
 
+	fmt.Println("Responding...")
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 	w.Write(jsonResponse)
 }
 
