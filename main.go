@@ -136,17 +136,24 @@ func (s *server) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	fmt.Println(run.ID)
 	res := &runResponse{
 		ID: run.ID,
 	}
-	err = json.NewEncoder(w).Encode(res)
-	if err != nil {
+
+	jsonResponse, jsonError := json.Marshal(res)
+	if jsonError != nil {
 		log.Printf("%v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
+	fmt.Println(string(jsonResponse))
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	w.Write(jsonResponse)
 }
 
 type runDetails struct {
@@ -187,14 +194,19 @@ func (s *server) RunHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	details.Outputs = outputs
-	err = json.NewEncoder(w).Encode(details)
-	if err != nil {
+	jsonResponse, jsonError := json.Marshal(details)
+	if jsonError != nil {
 		log.Printf("%v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
+	fmt.Println(string(jsonResponse))
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	w.Write(jsonResponse)
 }
 
 func (s *server) findOrCreateWorkspace(uuid string) (*tfe.Workspace, error) {
