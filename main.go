@@ -63,6 +63,7 @@ func main() {
 	r.HandleFunc("/favicon.ico", faviconHandler).Methods("GET")
 	r.HandleFunc("/apply/{uuid}", s.ApplyConfig).Methods("POST")
 	r.HandleFunc("/runs/{id}", s.RunHandler).Methods("GET")
+	r.HandleFunc("/share", s.ShareHandler).Methods("POST")
 
 	// Choose the folder to serve
 	staticDir := "/assets/"
@@ -101,14 +102,27 @@ func (s *server) HomeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Println(sessionUUID)
+	queryParams := r.URL.Query()
+	log.Println(queryParams)
+	shareIds := queryParams["share_id"]
+	shareId := ""
+	if len(shareIds) > 0 {
+		shareId = shareIds[0]
+	}
 
-	tmpl := template.Must(template.ParseFiles("layout.html"))
+	cacheId := sessionUUID
+
+	if shareId != "" {
+		log.Println("SHARING: ", shareId)
+		cacheId = shareId
+	}
+
 	data := PageData{
 		Uuid: sessionUUID,
 	}
-	if s.cache.Contains(sessionUUID) {
-		log.Println("Contains Key", sessionUUID)
-		if val, hasKey := s.cache.Get(sessionUUID); hasKey {
+	if s.cache.Contains(cacheId) {
+		log.Println("Contains Key", cacheId)
+		if val, hasKey := s.cache.Get(cacheId); hasKey {
 			log.Println("Get Key")
 			if runVal, ok := val.(*runOutput); ok {
 				log.Println("RUNVAL")
@@ -121,6 +135,7 @@ func (s *server) HomeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data.ApplyPath = fmt.Sprintf("/apply/%s", data.Uuid)
+	tmpl := template.Must(template.ParseFiles("layout.html"))
 	tmpl.Execute(w, data)
 }
 
@@ -328,6 +343,77 @@ func (s *server) RunHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	w.Write(jsonResponse)
+}
+
+type share struct {
+	HasConfig bool   `json:"hasconfig"`
+	ID        string `json:"id"`
+}
+
+func (s *server) ShareHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("Sharing URL")
+	sessionUUID, err := getSessionUuid(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Println(sessionUUID)
+	if !s.cache.Contains(sessionUUID) {
+		log.Println("No Session!")
+		shareDetails := &share{
+			HasConfig: false,
+		}
+		jsonResponse, jsonError := json.Marshal(shareDetails)
+		if jsonError != nil {
+			log.Printf("%v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonResponse)
+		return
+	}
+
+	config := &tfConfig{}
+	err = json.NewDecoder(r.Body).Decode(config)
+	if err != nil {
+		log.Printf("%v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	val, _ := s.cache.Get(sessionUUID)
+	runVal, ok := val.(*runOutput)
+	log.Println("Get Key")
+	if !ok {
+		log.Println("OMAR COULD NOT TYPE CAST TO RUN OUTPUT")
+		err := fmt.Errorf("OMAR COULD NOT TYPE CAST TO RUN OUTPUT")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	id := uuid.NewString()
+	runData := &runOutput{
+		RunId:  runVal.RunId,
+		Config: config.Config,
+	}
+	s.cache.Add(id, runData)
+	shareDetails := &share{
+		HasConfig: true,
+		ID:        id,
+	}
+	jsonResponse, jsonError := json.Marshal(shareDetails)
+	if jsonError != nil {
+		log.Printf("%v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonResponse)
+	return
 }
 
 func (s *server) findOrCreateWorkspace(uuid string) (*tfe.Workspace, error) {

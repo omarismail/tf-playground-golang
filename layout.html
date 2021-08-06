@@ -15,14 +15,20 @@
             <label>
             </label>
             {{if .Config}}
-                <textarea name="config" cols="50" rows="30" value={{.Config}} placeholder="Write your terraform here!">{{.Config}}</textarea><br>
+                <textarea id="configuration" name="config" cols="50" rows="30" value={{.Config}} placeholder="Write your terraform here!">{{.Config}}</textarea><br>
             {{else}}
-                {{.Config}}
-                <textarea name="config" cols="50" rows="30" value="" placeholder="Write your terraform here!"></textarea><br>
+                <textarea id="configuration" name="config" cols="50" rows="30" value="" placeholder="Write your terraform here!"></textarea><br>
             {{end}}
             <input type="submit" value="Submit" />
           </form>
         </div>
+        <br>
+        <div>
+            <button id="share">Share</button>
+            <p id="shareurl"></p>
+        </div>
+        <br>
+        <br>
         <div className="app-output">
             {{if .RunId}}
                 <p>Run:</p><p id="run-id">{{.RunId}}</p>
@@ -33,17 +39,4 @@
       </div>
     </div>
 </div>
-<script>
-</script>
 
-<!---
-<ul>
-    {{range .Todos}}
-        {{if .Done}}
-            <li class="done">{{.Title}}</li>
-        {{else}}
-            <li>{{.Title}}</li>
-        {{end}}
-    {{end}}
-</ul>
---->
