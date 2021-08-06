@@ -1,32 +1,40 @@
 <head>
     <link href="assets/style.css" type="text/css" rel="stylesheet">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="assets/index.js"></script>
 </head>
 
 <div class="app">
     <header class="app-header">
         <p>Terraform Playground</p>
     </header>
-
     <div>
       <div>
         <div class="app-form">
           <form action="{{.ApplyPath}}" method="post">
             <label>
             </label>
-            <textarea name="config" cols="50" rows="30" value="" placeholder="Write your terraform here!">
-            </textarea><br>
+            {{if .Config}}
+                <textarea name="config" cols="50" rows="30" value={{.Config}} placeholder="Write your terraform here!">{{.Config}}</textarea><br>
+            {{else}}
+                {{.Config}}
+                <textarea name="config" cols="50" rows="30" value="" placeholder="Write your terraform here!"></textarea><br>
+            {{end}}
             <input type="submit" value="Submit" />
           </form>
         </div>
         <div className="app-output">
             {{if .RunId}}
-                <p>Run: {{.RunId}}</p>
+                <p>Run:</p><p id="run-id">{{.RunId}}</p>
+                <p>Status:<p><p id="status">Pending</p>
+                <p>Output:<p><p id="output">...</p>
             {{end}}
-          <p>Output: </p>
         </div>
       </div>
     </div>
 </div>
+<script>
+</script>
 
 <!---
 <ul>

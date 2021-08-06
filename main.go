@@ -83,26 +83,15 @@ type PageData struct {
 	ApplyPath   string
 	RunId       string
 	StateOutput string
-	Todos       []Todo
+	Config      string
 	RunData     runOutput
-}
-
-type Todo struct {
-	Title string
-	Done  bool
 }
 
 type runOutput struct {
 	RunId  string
 	Output string
+	Config string
 }
-
-//data := PageData{
-//	Uuid: uuid.NewString(),
-//	Todos: []Todo{
-//		{Title: "Task 1", Done: false},
-//	},
-//}
 
 func (s *server) HomeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("OK")
@@ -111,6 +100,7 @@ func (s *server) HomeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	log.Println(sessionUUID)
 
 	tmpl := template.Must(template.ParseFiles("layout.html"))
 	data := PageData{
@@ -118,11 +108,14 @@ func (s *server) HomeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.cache.Contains(sessionUUID) {
 		log.Println("Contains Key", sessionUUID)
-		val, hasKey := s.cache.Get(sessionUUID)
-		if hasKey {
+		if val, hasKey := s.cache.Get(sessionUUID); hasKey {
+			log.Println("Get Key")
 			if runVal, ok := val.(*runOutput); ok {
+				log.Println("RUNVAL")
+				log.Println(runVal)
 				data.RunId = runVal.RunId
 				data.StateOutput = runVal.Output
+				data.Config = runVal.Config
 			}
 		}
 	}
@@ -262,20 +255,22 @@ func (s *server) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.cache.Contains(sessionUUID) {
-		runData := &runOutput{
-			RunId: run.ID,
-		}
-		s.cache.Add(sessionUUID, runData)
+	runData := &runOutput{
+		RunId:  run.ID,
+		Config: configVal,
 	}
+	s.cache.Add(sessionUUID, runData)
 
 	pageData := PageData{
-		Uuid:  sessionUUID,
-		RunId: run.ID,
+		Uuid:      sessionUUID,
+		RunId:     run.ID,
+		Config:    configVal,
+		ApplyPath: fmt.Sprintf("/apply/%s", sessionUUID),
 	}
-	pageData.ApplyPath = fmt.Sprintf("/apply/%s", pageData.Uuid)
+	fmt.Println(pageData)
 	//renderTemplate(w, "layout", pageData)
 	http.Redirect(w, r, "/", http.StatusFound)
+
 	//w.Header().Set("Content-Type", "application/json")
 	//w.WriteHeader(http.StatusOK)
 	//w.Write(jsonResponse)
@@ -283,7 +278,7 @@ func (s *server) ApplyConfig(w http.ResponseWriter, r *http.Request) {
 
 type runDetails struct {
 	Status  string   `json:"status"`
-	Outputs []string `json:"output-values"`
+	Outputs []string `json:"outputs"`
 }
 
 func (s *server) RunHandler(w http.ResponseWriter, r *http.Request) {
